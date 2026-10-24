@@ -1,0 +1,28 @@
+{
+  "name": "source-control",
+  "version": "0.1.0",
+  "description": "A Source Control pane like VS Code's: changed files with inline diffs, stage and discard, a commit box with a Haiku-written message, commit, push, pull, sync, branches and stash.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "commitModel": {
+      "type": "string",
+      "title": "Commit message model",
+      "description": "The model alias or id the generate button uses. haiku follows the latest Haiku.",
+      "default": "haiku"
+    },
+    "refreshSeconds": {
+      "type": "string",
+      "title": "Refresh every",
+      "description": "Seconds between status checks while the pane is open (changes Claude makes also refresh it at once)",
+      "default": "3",
+      "options": ["2", "3", "5", "10", "30"]
+    },
+    "autoOpen": {
+      "type": "string",
+      "title": "Open the pane",
+      "description": "never: only with /scm; first-change: also once, when this chat first changes a file in a git repository",
+      "default": "never",
+      "options": ["never", "first-change"]
+    }
+  }
+}

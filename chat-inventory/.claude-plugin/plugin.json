@@ -1,0 +1,15 @@
+{
+  "name": "chat-inventory",
+  "version": "0.1.0",
+  "description": "A side pane, In this chat: the to-do list, connectors with calls per connector, context files and skills this chat used.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "autoOpen": {
+      "type": "string",
+      "title": "Open the pane",
+      "description": "never: only with /inventory; first-use: also once, the first time this chat uses a connector, file, skill or to-do list",
+      "default": "never",
+      "options": ["never", "first-use"]
+    }
+  }
+}
