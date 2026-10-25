@@ -1,0 +1,6 @@
+{
+  "name": "delegate-monitor",
+  "version": "0.1.0",
+  "description": "Sidebar (/delegates) for tasks handed to opencode and codex: running and finished runs with bouncing icons, model, time and a clear button.",
+  "types": "./types/index.d.ts"
+}

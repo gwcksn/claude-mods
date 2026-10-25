@@ -1,0 +1,6 @@
+{
+  "name": "switchboard",
+  "version": "0.1.0",
+  "description": "One pane to turn every mod on or off, show or hide it, or open its side pane, in every chat. Finds new mods by itself.",
+  "types": "./types/index.d.ts"
+}

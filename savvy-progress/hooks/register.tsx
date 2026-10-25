@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { AgentRun, Flow, Panel, Phase, PlannedTask } from '../types'
+import { clearHidden, readSwitch, takeOpenRequest } from './switch'
 
 const flow = atom({ plugin: 'savvy-progress', key: 'flow' } as const, null)
 const agents = atom({ plugin: 'savvy-progress', key: 'agents' } as const, [])
@@ -866,6 +867,12 @@ ${statusMark(mx(W, W - 22), 19, 'planned', color)}`,
   )
 }
 
+// What the Switchboard says: off draws no band or pane and refuses /agents-info, hidden draws none until
+// /agents-info or Open. Tracking goes on either way, so nothing is lost when it comes back.
+const NAME = 'savvy-progress'
+let isOff = false
+let isHidden = false
+
 // Opens or closes the agents pane. The state records which, so the band's button
 // redraws with the right word (it also asks the engine, at draw time).
 async function setPane($: EngineInterface, isOpen: boolean): Promise<void> {
@@ -890,11 +897,24 @@ async function togglePane($: EngineInterface): Promise<boolean> {
 }
 
 async function autoOpen($: EngineInterface, key: string): Promise<void> {
+  if (isOff || isHidden) return
   const p = await read($, panel)
   if (p.autoOpenedFor === key) return
   await update($, panel, prev => ({ ...prev, autoOpenedFor: key }))
   // A drawing aid: if the pane cannot open, the flow goes on without it.
   void setPane($, true).catch(() => undefined)
+}
+
+/** Follows the Switchboard: closes the pane when switched off or hidden, opens it when asked to. */
+async function follow($: EngineInterface): Promise<void> {
+  const s = await readSwitch($, NAME)
+  isOff = s.isOff
+  isHidden = s.isHidden
+  const isAsked = await takeOpenRequest($, NAME)
+  const isUp = (await $.ui.panes().catch(() => [])).some(p => p.id === PANE)
+  if (isOff || isHidden) {
+    if (isUp) await setPane($, false).catch(() => undefined)
+  } else if (isAsked && !isUp) await setPane($, true).catch(() => undefined)
 }
 
 export const register: Register = (on, options) => {
@@ -969,10 +989,19 @@ export const register: Register = (on, options) => {
         if (Math.floor(at / 1000) !== Math.floor(prev / 1000)) await update($, now, () => at)
       })()
     })
+    await follow($)
+    $.clock.every(3000, () => {
+      void follow($).catch(() => undefined)
+    })
     return started
   })
 
   on('command.run', { command: 'agents-info' }, async ($, e) => {
+    if (isOff) return { text: 'Agents is off. Turn it on with /switchboard.' }
+    if (isHidden) {
+      await clearHidden($, NAME)
+      isHidden = false
+    }
     // `/agents-info open` opens the panel, or brings it forward from behind another tab, without toggling it.
     if ((e.args ?? '').trim() === 'open') {
       await setPane($, true)
@@ -1352,6 +1381,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (isOff || isHidden) return next(e)
     const flowNow = await read($, flow)
     const list = await read($, agents)
     const p: Panel = await read($, panel)

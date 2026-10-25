@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionMessage } from 'claude-code'
 
 import type { ConnectorRow, FileRow, Inventory, PlanStep, SkillRow, View } from '../types'
+import { clearHidden, readSwitch, takeOpenRequest } from './switch'
 
 const PANE = 'chat-inventory'
 const TITLE = 'In this chat'
@@ -20,6 +21,9 @@ const view = atom({ plugin: 'chat-inventory', key: 'view' } as const, { folded: 
 let seq = 0
 let home = ''
 let hasAutoOpened = false
+// What the Switchboard says: off closes the pane and refuses /inventory, hidden closes it until /inventory or Open.
+let isOff = false
+let isHidden = false
 const seen = new Set<string>()
 
 const PLAN_TOOLS = new Set(['TodoWrite', 'TaskCreate', 'TaskUpdate'])
@@ -198,6 +202,17 @@ const logoSvg = (name: string, key: string): string => {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"><rect width="32" height="32" rx="8" fill="hsl(${h},55%,48%)"/><text x="16" y="21.5" text-anchor="middle" font-family="-apple-system,Helvetica,Arial,sans-serif" font-size="16" font-weight="700" fill="#ffffff">${letter}</text></svg>`
 }
 
+/** Follows the Switchboard: closes the pane when switched off or hidden, opens it when asked to. */
+async function follow($: EngineInterface): Promise<void> {
+  const s = await readSwitch($, PANE)
+  isOff = s.isOff
+  isHidden = s.isHidden
+  const isAsked = await takeOpenRequest($, PANE)
+  if (isOff || isHidden) {
+    if (await isOpen($).catch(() => false)) await $.ui.close({ id: PANE }).catch(() => undefined)
+  } else if (isAsked && !(await isOpen($).catch(() => false))) await openPane($)
+}
+
 export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -206,10 +221,19 @@ export const register: Register = (on, options) => {
     void seed($)
       .then(() => loadMemoryFiles($))
       .catch(() => undefined)
+    await follow($)
+    $.clock.every(3000, () => {
+      void follow($).catch(() => undefined)
+    })
     return started
   })
 
   on('command.run', { command: 'inventory' }, async $ => {
+    if (isOff) return { text: 'Chat Inventory is off. Turn it on with /switchboard.' }
+    if (isHidden) {
+      await clearHidden($, PANE)
+      isHidden = false
+    }
     if (await isOpen($)) {
       await $.ui.close({ id: PANE })
       return { text: 'In this chat pane closed.' }
@@ -226,7 +250,7 @@ export const register: Register = (on, options) => {
     try {
       const call = e as unknown as Record<string, unknown> & { tool: string; tool_use_id: string; agentId?: string }
       const changed = await record($, call.tool_use_id, call.tool, call, (ran as { result?: unknown }).result, !call.agentId)
-      if (changed && options.autoOpen === 'first-use' && !hasAutoOpened) {
+      if (changed && options.autoOpen === 'first-use' && !hasAutoOpened && !isOff && !isHidden) {
         hasAutoOpened = true
         void openPane($)
       }

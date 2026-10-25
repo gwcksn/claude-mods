@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Change, CommitMode, DiffView, Repo, View } from '../types'
 import * as G from './git'
 import { RULES, buildPrompt, cleanMessage, splitDiff, trimDiff } from './message'
+import { clearHidden, readSwitch, takeOpenRequest } from './switch'
 
 const PANE = 'source-control'
 const TITLE = 'Source Control'
@@ -39,6 +40,9 @@ let isOpen = false
 let isRefreshing = false
 let isBusy = false
 let hasAutoOpened = false
+// What the Switchboard says: off closes the pane and refuses /scm, hidden closes it until /scm or Open.
+let isOff = false
+let isHidden = false
 let recent: string[] = []
 let stop: AbortController | null = null
 
@@ -418,6 +422,17 @@ async function setPane($: EngineInterface, open: boolean): Promise<void> {
   }
 }
 
+/** Follows the Switchboard: closes the pane when switched off or hidden, opens it when asked to. */
+async function follow($: EngineInterface): Promise<void> {
+  const s = await readSwitch($, PANE)
+  isOff = s.isOff
+  isHidden = s.isHidden
+  const isAsked = await takeOpenRequest($, PANE)
+  if (isOff || isHidden) {
+    if (isOpen) await setPane($, false).catch(() => undefined)
+  } else if (isAsked && !isOpen) await setPane($, true)
+}
+
 export const register: Register = (on, options) => {
   const seconds = Math.max(2, Number(options.refreshSeconds) || 3)
   const model = String(options.commitModel || 'haiku')
@@ -426,6 +441,10 @@ export const register: Register = (on, options) => {
     const started = await next(e)
     await $.command.register({ name: 'scm', description: 'Show or hide the Source Control pane: changes, diffs, stage, commit, push, pull', immediate: true })
     await loadRecent($)
+    await follow($)
+    $.clock.every(3000, () => {
+      void follow($).catch(() => undefined)
+    })
     // Quiet when the pane is shut: only a shown pane keeps git busy.
     $.clock.every(seconds * 1000, () => {
       if (isOpen && !isBusy) void refresh($)
@@ -434,6 +453,11 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'scm' }, async $ => {
+    if (isOff) return { text: 'Source Control is off. Turn it on with /switchboard.' }
+    if (isHidden) {
+      await clearHidden($, PANE)
+      isHidden = false
+    }
     const up = (await $.ui.panes()).some(p => p.id === PANE)
     await setPane($, !up)
     return { text: up ? 'Source Control closed.' : 'Source Control opened.' }
@@ -443,7 +467,7 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
-      if (/^(Bash|Edit|Write|MultiEdit|NotebookEdit)$/.test(e.tool) && (ran as { deny?: unknown }).deny === undefined) {
+      if (!isOff && !isHidden && /^(Bash|Edit|Write|MultiEdit|NotebookEdit)$/.test(e.tool) && (ran as { deny?: unknown }).deny === undefined) {
         if (isOpen) void refresh($)
         else if (options.autoOpen === 'first-change' && !hasAutoOpened) {
           await refresh($)
