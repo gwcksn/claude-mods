@@ -9,9 +9,9 @@ const PANE = { title: '', isFocused: false, bodyColumns: 60, placement: 'dock', 
 
 test('parses the opencode commands Claude has been running', () => {
   const a = parseLaunch(
-    `cd /home/gilang/Codes/gmt && opencode run --auto -m commandcode/MiniMaxAI/MiniMax-M3 --title "Scaffold user service" "Read PLAN.md and build it" 2>&1 | tail -50`,
+    `cd /home/me/proj && opencode run --auto -m commandcode/MiniMaxAI/MiniMax-M3 --title "Scaffold user service" "Read PLAN.md and build it" 2>&1 | tail -50`,
   )
-  expect(a).toEqual({ agent: 'opencode', title: 'Scaffold user service', model: 'MiniMax-M3', prompt: 'Read PLAN.md and build it', cwd: '/home/gilang/Codes/gmt' })
+  expect(a).toEqual({ agent: 'opencode', title: 'Scaffold user service', model: 'MiniMax-M3', prompt: 'Read PLAN.md and build it', cwd: '/home/me/proj' })
 
   const b = parseLaunch(`opencode run --standalone 'fix the failing tests in api/'`, '')
   expect(b?.title).toBe('fix the failing tests in api/')
